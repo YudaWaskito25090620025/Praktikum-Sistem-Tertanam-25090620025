@@ -4,9 +4,10 @@ use IEEE.STD_LOGIC_1164.ALL;
 entity js05_top is
     Port (
         clk  : in  STD_LOGIC;
-        btnU : in  STD_LOGIC; -- Tombol Up
-        btnD : in  STD_LOGIC; -- Tombol Down
-        btnC : in  STD_LOGIC; -- Tombol Reset/Center
+        sw   : in  STD_LOGIC_VECTOR(0 downto 0); -- Tambahan untuk Tugas 2 (Freeze/Pause)
+        btnU : in  STD_LOGIC;
+        btnD : in  STD_LOGIC;
+        btnC : in  STD_LOGIC;
         seg  : out STD_LOGIC_VECTOR(6 downto 0);
         dp   : out STD_LOGIC;
         an   : out STD_LOGIC_VECTOR(3 downto 0)
@@ -14,49 +15,30 @@ entity js05_top is
 end js05_top;
 
 architecture Behavioral of js05_top is
-
-    -- Komponen Debounce
-    component debounce is
-        Generic ( CLK_FREQ_HZ : integer := 100_000_000; STABLE_MS : integer := 10 );
-        Port ( clk : in STD_LOGIC; btn_in : in STD_LOGIC; btn_out : out STD_LOGIC );
-    end component;
-
-    -- Komponen Edge Detector
-    component edge_detect is
-        Port ( clk : in STD_LOGIC; sig_in : in STD_LOGIC; pulse : out STD_LOGIC );
-    end component;
-
-    -- Komponen Up/Down Counter
-    component updown_counter is
-        Port ( clk : in STD_LOGIC; inc : in STD_LOGIC; dec : in STD_LOGIC; reset : in STD_LOGIC; count_o : out STD_LOGIC_VECTOR(15 downto 0) );
-    end component;
-
-    -- Komponen Seven Segment Driver
-    component seven_seg_driver is
-        Generic ( DIGITS : integer := 4 );
-        Port ( clk : in STD_LOGIC; data : in STD_LOGIC_VECTOR(15 downto 0); seg : out STD_LOGIC_VECTOR(6 downto 0); dp : out STD_LOGIC; an : out STD_LOGIC_VECTOR(3 downto 0) );
-    end component;
-
-    -- Sinyal Antar-Modul
-    signal btnU_db, btnD_db, btnC_db : STD_LOGIC;
-    signal pulseU, pulseD            : STD_LOGIC;
-    signal count_val                 : STD_LOGIC_VECTOR(15 downto 0);
-
+    signal u_clean, d_clean, rst : STD_LOGIC;
+    signal u_pulse, d_pulse      : STD_LOGIC;
+    signal inc_en, dec_en        : STD_LOGIC;
+    signal count                 : STD_LOGIC_VECTOR(15 downto 0);
 begin
+    -- Instansiasi Debounce
+    deb_u: entity work.debounce port map (clk => clk, btn_in => btnU, btn_out => u_clean);
+    deb_d: entity work.debounce port map (clk => clk, btn_in => btnD, btn_out => d_clean);
+    deb_c: entity work.debounce port map (clk => clk, btn_in => btnC, btn_out => rst);
 
-    -- Instansiasi Debouncer untuk ketiga tombol
-    db_u : debounce generic map(CLK_FREQ_HZ => 100_000_000, STABLE_MS => 10) port map(clk => clk, btn_in => btnU, btn_out => btnU_db);
-    db_d : debounce generic map(CLK_FREQ_HZ => 100_000_000, STABLE_MS => 10) port map(clk => clk, btn_in => btnD, btn_out => btnD_db);
-    db_c : debounce generic map(CLK_FREQ_HZ => 100_000_000, STABLE_MS => 10) port map(clk => clk, btn_in => btnC, btn_out => btnC_db);
+    -- Instansiasi Edge Detector
+    edge_u: entity work.edge_detect port map (clk => clk, sig_in => u_clean, pulse => u_pulse);
+    edge_d: entity work.edge_detect port map (clk => clk, sig_in => d_clean, pulse => d_pulse);
 
-    -- Instansiasi Edge Detector untuk tombol Up dan Down
-    ed_u : edge_detect port map(clk => clk, sig_in => btnU_db, pulse => pulseU);
-    ed_d : edge_detect port map(clk => clk, sig_in => btnD_db, pulse => pulseD);
+    -- Logika Freeze: Bila sw(0) = '1', pulsa tambah/kurang diabaikan (Freeze)
+    inc_en <= u_pulse and (not sw(0));
+    dec_en <= d_pulse and (not sw(0));
 
-    -- Instansiasi Counter
-    counter_inst : updown_counter port map(clk => clk, inc => pulseU, dec => pulseD, reset => btnC_db, count_o => count_val);
+    -- Instansiasi Up/Down Counter
+    cntr: entity work.updown_counter
+        port map (clk => clk, rst => rst, inc => inc_en, dec => dec_en, count => count);
 
-    -- Instansiasi Seven Segment Display Driver
-    seg_driver_inst : seven_seg_driver generic map(DIGITS => 4) port map(clk => clk, data => count_val, seg => seg, dp => dp, an => an);
-
+    -- Instansiasi Seven Segment Driver (sudah menggunakan hex_to_seg dari Tugas 1)
+    disp: entity work.seven_seg_driver
+        generic map (DIGITS => 4)
+        port map (clk => clk, data => count, seg => seg, dp => dp, an => an);
 end Behavioral;

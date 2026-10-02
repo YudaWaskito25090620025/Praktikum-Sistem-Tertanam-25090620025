@@ -4,20 +4,25 @@ use IEEE.NUMERIC_STD.ALL;
 
 entity seven_seg_driver is
     Generic (
-        DIGITS : integer := 4
+        DIGITS  : integer := 4;
+        CLK_DIV : integer := 100_000
     );
     Port (
         clk  : in  STD_LOGIC;
-        data : in  STD_LOGIC_VECTOR(15 downto 0); -- 4 digit x 4-bit BCD/Hex
-        seg  : out STD_LOGIC_VECTOR(6 downto 0);  -- Segmen gfedcba (aktif rendah)
-        dp   : out STD_LOGIC;                     -- Titik desimal
-        an   : out STD_LOGIC_VECTOR(3 downto 0)   -- Anoda digit (aktif rendah)
+        data : in  STD_LOGIC_VECTOR(4*DIGITS-1 downto 0);
+        seg  : out STD_LOGIC_VECTOR(6 downto 0);
+        dp   : out STD_LOGIC;
+        an   : out STD_LOGIC_VECTOR(DIGITS-1 downto 0)
     );
 end seven_seg_driver;
 
-architecture Behavioral of seven_seg_driver is 
-    -- Fungsi konversi BCD ke pola Seven-Segment (aktif rendah)
-    function bcd_to_seg(digit : unsigned(3 downto 0)) return STD_LOGIC_VECTOR is
+architecture Behavioral of seven_seg_driver is
+    signal tick_cnt : integer range 0 to CLK_DIV-1 := 0;
+    signal idx      : integer range 0 to DIGITS-1 := 0;
+    signal digit    : unsigned(3 downto 0);
+
+    -- Fungsi konversi Heksadesimal (0-F) ke pola Seven-Segment (aktif-rendah)
+    function hex_to_seg(digit : unsigned(3 downto 0)) return STD_LOGIC_VECTOR is
     begin
         case digit is
             when "0000" => return "1000000"; -- 0
@@ -30,51 +35,39 @@ architecture Behavioral of seven_seg_driver is
             when "0111" => return "1111000"; -- 7
             when "1000" => return "0000000"; -- 8
             when "1001" => return "0010000"; -- 9
+            when "1010" => return "0001000"; -- A
+            when "1011" => return "0000011"; -- b
+            when "1100" => return "1000110"; -- C
+            when "1101" => return "0100001"; -- d
+            when "1110" => return "0000110"; -- E
+            when "1111" => return "0001110"; -- F
             when others => return "0111111"; -- '-'
         end case;
     end function;
-
-    -- Pencacah pembagi clock (~1 kHz refresh digit)
-    signal refresh_counter : unsigned(16 downto 0) := (others => '0');
-    signal digit_select    : unsigned(1 downto 0) := "00";
-    signal current_digit   : unsigned(3 downto 0);
-
 begin
-    dp <= '1'; -- Matikan titik desimal (aktif rendah)
-
     process(clk)
     begin
         if rising_edge(clk) then
-            refresh_counter <= refresh_counter + 1;
+            if tick_cnt = CLK_DIV-1 then
+                tick_cnt <= 0;
+                if idx = DIGITS-1 then
+                    idx <= 0;
+                else
+                    idx <= idx + 1;
+                end if;
+            else
+                tick_cnt <= tick_cnt + 1;
+            end if;
         end if;
     end process;
 
-    -- Ambil 2 bit teratas pembagi clock untuk memilih digit aktif
-    digit_select <= refresh_counter(16 downto 15);
+    digit <= unsigned(data(4*idx+3 downto 4*idx));
+    seg   <= hex_to_seg(digit);
+    dp    <= '1';
 
-    -- Proses Multiplexing Anoda dan Pemilihan Data Digit
-    process(digit_select, data)
+    process(idx)
     begin
-        case digit_select is
-            when "00" =>
-                an <= "1110"; -- Digit 0 (Paling Kanan)
-                current_digit <= unsigned(data(3 downto 0));
-            when "01" =>
-                an <= "1101"; -- Digit 1
-                current_digit <= unsigned(data(7 downto 4));
-            when "10" =>
-                an <= "1011"; -- Digit 2
-                current_digit <= unsigned(data(11 downto 8));
-            when "11" =>
-                an <= "0111"; -- Digit 3 (Paling Kiri)
-                current_digit <= unsigned(data(15 downto 12));
-            when others =>
-                an <= "1111";
-                current_digit <= "0000";
-        end case;
+        an <= (others => '1');
+        an(idx) <= '0';
     end process;
-
-    -- Tampilkan pola ke segmen
-    seg <= bcd_to_seg(current_digit);
-
 end Behavioral;

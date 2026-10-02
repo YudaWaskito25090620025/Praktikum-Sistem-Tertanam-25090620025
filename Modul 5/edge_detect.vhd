@@ -5,7 +5,7 @@ entity edge_detect is
     Port (
         clk    : in  STD_LOGIC;
         sig_in : in  STD_LOGIC;
-        pulse  : out STD_LOGIC                
+        pulse  : out STD_LOGIC
     );
 end edge_detect;
 
@@ -18,6 +18,5 @@ begin
             prev <= sig_in;
         end if;
     end process;
-
-    pulse <= sig_in and (not prev);
+    pulse <= sig_in and not prev;
 end Behavioral;
